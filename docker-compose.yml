@@ -1,0 +1,90 @@
+x-common-service: &mpi-common
+  build:
+    context: mpi/
+    dockerfile: Dockerfile
+  volumes:
+  - ./project:/home/mpiuser/project
+  networks:
+    - my_net
+
+services:
+  mpi-master:
+    <<: *mpi-common
+    container_name: mpi-master
+    hostname: master
+
+  mpi-worker1:
+    <<: *mpi-common
+    container_name: mpi-worker1
+    hostname: worker1
+
+  mpi-worker2:
+    <<: *mpi-common
+    container_name: mpi-worker2
+    hostname: worker2
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - my_net
+
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    environment:
+      POSTGRES_USER: dbuser
+      POSTGRES_PASSWORD: AMyGOUcgJJk7YjA6a8cS
+      POSTGRES_DB: processing_jobs
+    ports:
+      - "5432:5432"
+    networks:
+      - my_net
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio123
+    entrypoint: sh
+    command: -c 'mkdir -p /data/artifacts && minio server /data --console-address ":9001"'
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - my_net
+
+  api:
+    build:
+      context: api/
+      dockerfile: Dockerfile
+    container_name: api
+    environment:
+      S3_ACCESS_KEY_ID: minio
+      S3_SECRET_ACCESS_KEY: minio123
+      S3_BUCKET_NAME: artifacts
+      S3_ENDPOINT_URL: http://minio:9000
+      POSTGRES_USER: dbuser
+      POSTGRES_PASSWORD: AMyGOUcgJJk7YjA6a8cS
+      POSTGRES_DB: processing_jobs
+      POSTGRES_HOST: postgres
+      RMQ_HOST: rabbitmq
+      RMQ_PORT: 5672
+      RMQ_USER: guest
+      RMQ_PASSWORD: guest
+      MPI_MASTER_HOST: mpi-master
+    ports:
+      - "8000:8000"
+    depends_on:
+      - rabbitmq
+      - minio
+    networks:
+      - my_net
+
+networks:
+  my_net:
+    driver: bridge
