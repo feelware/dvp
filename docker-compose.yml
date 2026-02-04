@@ -3,25 +3,64 @@ x-common-service: &mpi-common
     context: mpi/
     dockerfile: Dockerfile
   volumes:
-  - ./project:/home/mpiuser/project
+    - ./project:/home/mpiuser/project
+    - ssh-keys:/ssh-shared:rw
   networks:
     - my_net
 
 services:
+  # Servicio de inicialización que genera las claves SSH
+  ssh-keygen:
+    image: alpine:latest
+    container_name: ssh-keygen
+    volumes:
+      - ssh-keys:/ssh-shared:rw
+    command: >
+      sh -c "
+      if [ ! -f /ssh-shared/id_rsa ]; then
+        apk add --no-cache openssh-keygen &&
+        ssh-keygen -t rsa -f /ssh-shared/id_rsa -q -N '' &&
+        cp /ssh-shared/id_rsa.pub /ssh-shared/authorized_keys &&
+        echo 'Host *' > /ssh-shared/config &&
+        echo '  StrictHostKeyChecking no' >> /ssh-shared/config &&
+        echo '  UserKnownHostsFile=/dev/null' >> /ssh-shared/config &&
+        chmod 644 /ssh-shared/id_rsa.pub &&
+        chmod 644 /ssh-shared/authorized_keys &&
+        chmod 644 /ssh-shared/config &&
+        chmod 600 /ssh-shared/id_rsa &&
+        echo 'SSH keys generated successfully';
+      else
+        echo 'SSH keys already exist';
+      fi
+      "
+
   mpi-master:
     <<: *mpi-common
     container_name: mpi-master
     hostname: master
+    depends_on:
+      ssh-keygen:
+        condition: service_completed_successfully
 
   mpi-worker1:
     <<: *mpi-common
     container_name: mpi-worker1
     hostname: worker1
+    depends_on:
+      ssh-keygen:
+        condition: service_completed_successfully
+      mpi-master:
+        condition: service_started
 
   mpi-worker2:
     <<: *mpi-common
     container_name: mpi-worker2
     hostname: worker2
+    depends_on:
+      ssh-keygen:
+        condition: service_completed_successfully
+      mpi-master:
+        condition: service_started
 
   rabbitmq:
     image: rabbitmq:3-management
@@ -79,11 +118,22 @@ services:
       MPI_MASTER_HOST: mpi-master
     ports:
       - "8000:8000"
+    volumes:
+      - ssh-keys:/ssh-shared:ro
     depends_on:
-      - rabbitmq
-      - minio
+      ssh-keygen:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_started
+      minio:
+        condition: service_started
+      mpi-master:
+        condition: service_started
     networks:
       - my_net
+
+volumes:
+  ssh-keys:
 
 networks:
   my_net:

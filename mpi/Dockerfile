@@ -11,21 +11,25 @@ RUN apt-get update && apt-get install -y \
     libopenmpi-dev \
     libopencv-dev \
     ffmpeg \
+    dos2unix \
     && rm -rf /var/lib/apt/lists/*
-    
+
 RUN mkdir /var/run/sshd
 RUN sed -i 's/UsePAM yes/UsePAM no/g' /etc/ssh/sshd_config
+RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/g' /etc/ssh/sshd_config
 
 RUN useradd -m -s /bin/bash mpiuser && \
     echo "mpiuser:mpi" | chpasswd && \
-    adduser mpiuser sudo
+    adduser mpiuser sudo && \
+    echo "mpiuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-USER mpiuser
 RUN mkdir -p /home/mpiuser/.ssh && \
-    ssh-keygen -t rsa -f /home/mpiuser/.ssh/id_rsa -q -N "" && \
-    cp /home/mpiuser/.ssh/id_rsa.pub /home/mpiuser/.ssh/authorized_keys && \
-    echo "StrictHostKeyChecking no" > /home/mpiuser/.ssh/config
+    chown mpiuser:mpiuser /home/mpiuser/.ssh && \
+    chmod 700 /home/mpiuser/.ssh
 
-USER root
+COPY init-ssh.sh /usr/local/bin/init-ssh.sh
+RUN dos2unix /usr/local/bin/init-ssh.sh && chmod +x /usr/local/bin/init-ssh.sh
+
 WORKDIR /home/mpiuser/project
-CMD ["/usr/sbin/sshd", "-D"]
+
+CMD ["/usr/local/bin/init-ssh.sh"]
