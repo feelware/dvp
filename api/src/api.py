@@ -114,10 +114,19 @@ async def test_mpi_connection():
             client_keys=["/home/mpiuser/.ssh/id_rsa"],
             known_hosts="/home/mpiuser/.ssh/known_hosts",
         ) as conn:
+            # First test: simple hostname
             result = await conn.run("hostname", check=True)
+            hostname_output = result.stdout.strip()
+
+            # Second test: run mpirun across the cluster
+            mpi_command = "mpirun -n 6 --host master:2,worker1:2,worker2:2 hostname"
+            mpi_result = await conn.run(mpi_command, check=True)
+            mpi_output = mpi_result.stdout.strip()
+
             return {
                 "status": "success",
-                "message": f"MPI master node is reachable: {result.stdout.strip()}",
+                "message": f"MPI master node is reachable: {hostname_output}",
+                "mpi_test": {"command": mpi_command, "output": mpi_output},
             }
     except Exception as e:
         logger.error(f"MPI connection error: {str(e)}")
