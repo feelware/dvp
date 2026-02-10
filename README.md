@@ -11,6 +11,8 @@ Sistema distribuido para procesamiento de video utilizando MPI (Message Passing 
 - [Flujo de Trabajo](#-flujo-de-trabajo)
 - [Arquitectura de Red](#-arquitectura-de-red)
 - [Servicios Disponibles](#-servicios-disponibles)
+- [Consumer de RabbitMQ](#-consumer-de-rabbitmq-nodo-maestro)
+- [Testing del Sistema](#-testing-del-sistema)
 - [Validación del Sistema](#-validación-del-sistema)
 - [Troubleshooting](#-troubleshooting)
 
@@ -26,29 +28,36 @@ El sistema DVP está compuesto por los siguientes componentes:
 │  ┌──────────┐                                               │
 │  │   API    │  ◄─── FastAPI REST Service                    │
 │  │  (8000)  │       - Job Management                        │
-│  └────┬─────┘       - MPI Orchestration                     │
+│  └────┬─────┘       - Publish to RabbitMQ                   │
 │       │                                                      │
 │       ├──────────┬──────────┬──────────┬──────────┐         │
 │       ▼          ▼          ▼          ▼          ▼         │
 │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐   │
 │  │ MPI    │ │RabbitMQ│ │Postgres│ │ MinIO  │ │  SSH   │   │
 │  │ Cluster│ │ (5672) │ │ (5432) │ │ (9000) │ │  Keys  │   │
-│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘   │
-│      │                                                       │
-│      ├────────┬────────┬────────┐                          │
-│      ▼        ▼        ▼        ▼                          │
-│  ┌──────┐ ┌───────┐ ┌───────┐                             │
-│  │Master│ │Worker1│ │Worker2│  ◄─── MPI Processing Nodes  │
-│  └──────┘ └───────┘ └───────┘                             │
+│  └────────┘ └───┬────┘ └────────┘ └────────┘ └────────┘   │
+│      │          │ Queue: video_jobs                         │
+│      │          │                                           │
+│      │          ▼                                           │
+│      │      ┌──────┐  ◄─── RabbitMQ Consumer (C)           │
+│      │      │Master│       - Escucha cola video_jobs       │
+│      │      └──┬───┘       - Parsea JSON                   │
+│      │         │            - Invoca mpirun                 │
+│      ├─────────┴────┬────────┐                             │
+│      ▼              ▼        ▼                              │
+│  ┌──────┐       ┌───────┐ ┌───────┐                        │
+│  │Master│       │Worker1│ │Worker2│  ◄─── MPI Workers      │
+│  └──────┘       └───────┘ └───────┘                        │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ### Componentes:
 
-- **API**: Servicio REST basado en FastAPI que gestiona jobs y orquesta tareas MPI
+- **API**: Servicio REST basado en FastAPI que gestiona jobs y publica trabajos a RabbitMQ
 - **MPI Cluster**: Clúster de 3 nodos (1 master + 2 workers) para procesamiento paralelo
-- **RabbitMQ**: Cola de mensajes para comunicación asíncrona
+- **RabbitMQ**: Cola de mensajes para comunicación asíncrona entre API y nodo maestro
+  - **Consumer (Master)**: Proceso en C que escucha la cola `video_jobs`, parsea mensajes JSON y ejecuta trabajos MPI
 - **PostgreSQL**: Base de datos para almacenar estado de jobs
 - **MinIO**: Almacenamiento S3-compatible para artifacts y archivos procesados
 - **SSH Keys**: Sistema de claves compartidas para comunicación segura entre nodos MPI
@@ -189,6 +198,7 @@ bash validate-setup.sh
         └─► Copian claves SSH desde volumen compartido
         └─► Inician servicio SSH
         └─► Configuran autenticación sin contraseña
+        └─► Master inicia RabbitMQ Consumer en background
              │
              ▼
 5. Inicio de API
@@ -210,14 +220,29 @@ docker-compose logs -f
 # Ver logs de un servicio específico
 docker-compose logs -f api
 
+# Ver logs del consumer de RabbitMQ (nodo maestro)
+docker exec mpi-master cat /var/log/rabbitmq_consumer.log
+
+# Ver logs en tiempo real del consumer
+docker exec mpi-master tail -f /var/log/rabbitmq_consumer.log
+
+# Verificar que el consumer está corriendo
+docker exec mpi-master ps aux | grep rabbitmq_consumer
+
 # Reiniciar un servicio
 docker-compose restart api
+
+# Reiniciar el nodo maestro (reinicia el consumer)
+docker-compose restart mpi-master
 
 # Acceder al master MPI
 docker exec -u mpiuser -it mpi-master bash
 
 # Ejecutar comando MPI manual
 docker exec -u mpiuser mpi-master mpirun --hostfile /home/mpiuser/hostfile -np 6 hostname
+
+# Verificar estado de colas en RabbitMQ
+docker exec rabbitmq rabbitmqadmin list queues name messages consumers
 
 # Detener todos los servicios(elimina)
 docker-compose down
@@ -292,6 +317,138 @@ Los nodos MPI utilizan autenticación SSH basada en claves:
 | MPI Master | - | `mpiuser` (SSH key) | Nodo maestro MPI |
 | MPI Worker 1 | - | `mpiuser` (SSH key) | Nodo trabajador MPI |
 | MPI Worker 2 | - | `mpiuser` (SSH key) | Nodo trabajador MPI |
+
+## 🔄 Consumer de RabbitMQ (Nodo Maestro)
+
+El nodo maestro incluye un **consumer de RabbitMQ** escrito en C que se inicia automáticamente al arrancar el contenedor.
+
+### Funcionamiento
+
+- **Cola escuchada**: `video_jobs`
+- **Formato de mensajes**: JSON (ver [MENSAJE_RABBITMQ_CONTRACT.md](MENSAJE_RABBITMQ_CONTRACT.md))
+- **Proceso**: Se ejecuta en background (PID visible en logs de inicio)
+- **Logs**: `/var/log/rabbitmq_consumer.log` dentro del contenedor master
+
+### Verificar que el Consumer está Corriendo
+
+```bash
+# Ver el proceso del consumer
+docker exec mpi-master ps aux | grep rabbitmq_consumer
+
+# Ver logs de inicio del consumer
+docker logs mpi-master | grep -A 10 "RabbitMQ consumer"
+```
+
+### Ver Logs del Consumer
+
+```bash
+# Log completo
+docker exec mpi-master cat /var/log/rabbitmq_consumer.log
+
+# En tiempo real (seguir nuevos mensajes)
+docker exec mpi-master tail -f /var/log/rabbitmq_consumer.log
+```
+
+### Salida Esperada del Consumer
+
+```
+🚀 Iniciando RabbitMQ Consumer para MPI Master
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📡 Host: rabbitmq:5672
+👤 Usuario: guest
+📬 Cola: video_jobs
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔌 Conectando a RabbitMQ...
+✅ Conectado al servidor
+✅ Login exitoso
+✅ Canal abierto
+✅ Cola 'video_jobs' declarada (mensajes en cola: 0)
+✅ Consumer iniciado exitosamente
+👂 Escuchando mensajes de la cola 'video_jobs'...
+```
+
+### Cuando Recibe un Mensaje
+
+El consumer parsea el JSON y muestra:
+
+```
+========================================
+📨 MENSAJE RECIBIDO DE LA COLA
+========================================
+Contenido: {"job_id":"123","video_path":"uploads/video.mp4","task":"convert",...}
+Longitud: 95 bytes
+========================================
+
+📋 Información del Job:
+   Job ID: 123
+   Video Path: uploads/video.mp4
+   Task: convert
+   Params: {"output_format":"webm"}
+
+🚀 Comando MPI que se ejecutaría:
+   mpirun -np 6 --hostfile /home/mpiuser/hostfile \
+          /home/mpiuser/project/process_video \
+          123 uploads/video.mp4 convert
+
+✅ Mensaje procesado
+```
+
+## 🧪 Testing del Sistema
+
+### Probar el Consumer de RabbitMQ
+
+Puedes enviar mensajes de prueba manualmente usando RabbitMQ Management UI:
+
+#### 1. Acceder a RabbitMQ Management
+
+- URL: http://localhost:15672
+- Usuario: `guest`
+- Contraseña: `guest`
+
+#### 2. Publicar un Mensaje de Prueba
+
+1. Ir a **Queues and Streams** → Click en `video_jobs`
+2. Bajar a la sección **Publish message**
+3. Configurar:
+   - **Delivery mode**: `2 - Persistent`
+   - **Properties** → **content_type**: `application/json`
+4. En **Payload**, pegar:
+
+```json
+{
+  "job_id": "test_12345",
+  "video_path": "uploads/test_video.mp4",
+  "task": "convert",
+  "params": {
+    "output_format": "webm",
+    "resolution": "720p"
+  }
+}
+```
+
+5. Click en **Publish message**
+
+#### 3. Verificar que el Consumer Recibió el Mensaje
+
+```bash
+# Ver el log del consumer
+docker exec mpi-master cat /var/log/rabbitmq_consumer.log
+```
+
+Deberías ver el mensaje parseado con toda la información del job.
+
+### Contrato de Mensajes
+
+Para más detalles sobre el formato de mensajes JSON que acepta el consumer, consulta:
+
+📄 **[MENSAJE_RABBITMQ_CONTRACT.md](MENSAJE_RABBITMQ_CONTRACT.md)**
+
+Este archivo incluye:
+- Formato completo del JSON
+- Ejemplos para diferentes tipos de tareas
+- Código Python para publicar desde la API
+- Validaciones que realiza el consumer
 
 ## ✅ Validación del Sistema
 
@@ -407,23 +564,69 @@ docker exec minio ls /data/
 docker exec minio mkdir -p /data/artifacts
 ```
 
+### Problema: Consumer de RabbitMQ no está corriendo
+
+```bash
+# Verificar si el proceso está activo
+docker exec mpi-master ps aux | grep rabbitmq_consumer
+
+# Ver logs del container para ver errores de inicio
+docker logs mpi-master
+
+# Reiniciar el nodo maestro
+docker-compose restart mpi-master
+
+# Verificar logs del consumer
+docker exec mpi-master cat /var/log/rabbitmq_consumer.log
+```
+
+### Problema: Mensajes no se procesan
+
+```bash
+# 1. Verificar que solo hay 1 consumer conectado
+docker exec rabbitmq rabbitmqadmin list queues name messages consumers
+
+# Si hay más de 1 consumer, reiniciar todo:
+docker-compose down
+docker-compose up -d
+
+# 2. Verificar que RabbitMQ está accesible
+docker exec mpi-master nc -zv rabbitmq 5672
+
+# 3. Ver si hay mensajes en cola
+docker exec rabbitmq rabbitmqadmin list queues
+```
+
+### Problema: Consumer muestra errores de conexión
+
+```bash
+# Verificar que RabbitMQ esté completamente iniciado
+docker-compose logs rabbitmq
+
+# Esperar unos segundos y reiniciar el master
+sleep 10
+docker-compose restart mpi-master
+```
+
 ## 📚 Desarrollo
 
 ### Estructura del Proyecto
 
 ```
 dvp/
-├── api/                    # API Service
-│   ├── src/               # Source code
+├── api/                          # API Service
+│   ├── src/                     # Source code
 │   ├── Dockerfile
 │   ├── entrypoint.sh
 │   └── pyproject.toml
-├── mpi/                   # MPI Cluster
+├── mpi/                         # MPI Cluster
 │   ├── Dockerfile
-│   └── init-ssh.sh
-├── project/               # Shared workspace para MPI jobs
-├── docker-compose.yml     # Orquestación de servicios
-└── validate-setup.sh      # Script de validación
+│   ├── init-ssh.sh
+│   └── rabbitmq_consumer.c      # Consumer de RabbitMQ en C
+├── project/                     # Shared workspace para MPI jobs
+├── docker-compose.yml           # Orquestación de servicios
+├── validate-setup.sh            # Script de validación
+└── MENSAJE_RABBITMQ_CONTRACT.md # Contrato de mensajes API ↔ Master
 ```
 
 ### Variables de Entorno
