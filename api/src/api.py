@@ -156,10 +156,7 @@ async def test_mpi_connection():
 
 
 def validate_video_file(filename: str, file_size: int) -> None:
-    """
-    Validate video file extension and size
-    """
-    # Check extension
+
     file_ext = os.path.splitext(filename)[1].lower()
     if file_ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -167,7 +164,6 @@ def validate_video_file(filename: str, file_size: int) -> None:
             detail=f"Invalid file format. Only MP4 files are allowed. Got: {file_ext}"
         )
     
-    # Check file size
     if file_size > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=400,
@@ -179,6 +175,8 @@ async def upload_to_minio(file_content: bytes, object_name: str) -> str:
     """
     Upload file to MinIO storage
     Returns the path in MinIO
+
+    Stevan confirma si esto está bien w
     """
     try:
         s3 = boto3.client(
@@ -188,7 +186,6 @@ async def upload_to_minio(file_content: bytes, object_name: str) -> str:
             endpoint_url=S3_ENDPOINT_URL,
         )
         
-        # Upload to MinIO
         file_obj = BytesIO(file_content)
         s3.upload_fileobj(
             file_obj,
@@ -197,7 +194,6 @@ async def upload_to_minio(file_content: bytes, object_name: str) -> str:
             ExtraArgs={'ContentType': 'video/mp4'}
         )
         
-        # Return the path
         video_path = f"{S3_BUCKET_NAME}/{object_name}"
         logger.info(f"File uploaded to MinIO: {video_path}")
         return video_path
@@ -215,7 +211,6 @@ async def send_to_rabbitmq(message_data: dict) -> None:
     Send message to RabbitMQ queue
     """
     try:
-        # Connect to RabbitMQ
         connection = await connect_robust(
             host=RMQ_HOST,
             port=RMQ_PORT,
@@ -224,23 +219,19 @@ async def send_to_rabbitmq(message_data: dict) -> None:
         )
         
         async with connection:
-            # Create channel
             channel = await connection.channel()
             
-            # Declare queue (create if doesn't exist)
             queue = await channel.declare_queue(
                 RABBITMQ_QUEUE_NAME,
                 durable=True  # Queue survives broker restart
             )
             
-            # Prepare message
             message_body = json.dumps(message_data).encode()
             message = Message(
                 message_body,
-                delivery_mode=2,  # Make message persistent
+                delivery_mode=2,  
             )
             
-            # Send message
             await channel.default_exchange.publish(
                 message,
                 routing_key=RABBITMQ_QUEUE_NAME,
@@ -285,7 +276,6 @@ async def upload_video(
     - status: Current job status
     """
     try:
-        # Parse params JSON
         try:
             params_dict = json.loads(params)
         except json.JSONDecodeError:
@@ -294,25 +284,20 @@ async def upload_video(
                 detail="Invalid JSON in params field"
             )
         
-        # Read file content
         file_content = await file.read()
         file_size = len(file_content)
         
-        # Validate file
         validate_video_file(file.filename, file_size)
         
-        # Generate unique job ID
         job_id = str(uuid.uuid4())
         
-        # Create object name for MinIO (organize by date)
         timestamp = datetime.utcnow().strftime("%Y%m%d")
         file_extension = os.path.splitext(file.filename)[1]
         object_name = f"uploads/{timestamp}/video_{job_id}{file_extension}"
         
-        # Upload to MinIO
+
         video_path = await upload_to_minio(file_content, object_name)
         
-        # Create job record in database
         job = await Job.create(
             job_id=job_id,
             video_path=video_path,
@@ -323,7 +308,6 @@ async def upload_video(
         
         logger.info(f"Created job record in database: {job_id}")
         
-        # Prepare message for RabbitMQ
         message_data = {
             "job_id": job_id,
             "video_path": video_path,
@@ -332,10 +316,8 @@ async def upload_video(
             "created_at": job.created_at.isoformat()
         }
         
-        # Send to RabbitMQ
         await send_to_rabbitmq(message_data)
         
-        # Return response
         return {
             "status": "success",
             "job_id": job_id,
