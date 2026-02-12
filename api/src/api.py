@@ -36,7 +36,7 @@ MPI_MASTER_HOST = os.environ["MPI_MASTER_HOST"]
 # Configuration
 MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
 ALLOWED_EXTENSIONS = {".mp4"}
-RABBITMQ_QUEUE_NAME = "video_processing_queue"
+RABBITMQ_QUEUE_NAME = "video_jobs"
 
 # Set up logging
 logging.basicConfig(
