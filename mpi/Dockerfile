@@ -12,6 +12,11 @@ RUN apt-get update && apt-get install -y \
     libopencv-dev \
     ffmpeg \
     dos2unix \
+    librabbitmq-dev \
+    libcurl4-openssl-dev \
+    libcjson-dev \
+    pkg-config \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir /var/run/sshd
@@ -29,6 +34,12 @@ RUN mkdir -p /home/mpiuser/.ssh && \
 
 COPY init-ssh.sh /usr/local/bin/init-ssh.sh
 RUN dos2unix /usr/local/bin/init-ssh.sh && chmod +x /usr/local/bin/init-ssh.sh
+
+# Copiar y compilar el consumer de RabbitMQ
+COPY rabbitmq_consumer.c /tmp/rabbitmq_consumer.c
+RUN gcc -o /usr/local/bin/rabbitmq_consumer /tmp/rabbitmq_consumer.c -lrabbitmq -lcjson && \
+    chmod +x /usr/local/bin/rabbitmq_consumer && \
+    rm /tmp/rabbitmq_consumer.c
 
 WORKDIR /home/mpiuser/project
 
