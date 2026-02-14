@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y \
     libcjson-dev \
     pkg-config \
     netcat-openbsd \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir /var/run/sshd

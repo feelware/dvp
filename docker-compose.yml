@@ -88,8 +88,10 @@ services:
     environment:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: minio123
+    volumes:
+      - ./minio-init.sh:/minio-init.sh
     entrypoint: sh
-    command: -c 'mkdir -p /data/artifacts && minio server /data --console-address ":9001"'
+    command: /minio-init.sh
     ports:
       - "9000:9000"
       - "9001:9001"
