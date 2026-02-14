@@ -5,20 +5,23 @@ echo "Initializing SSH for MPI node..."
 # Copy keys from shared volume to user directory
 if [ -f /ssh-shared/id_rsa ]; then
     echo "Copying SSH keys from shared volume..."
-    cp /ssh-shared/id_rsa /home/mpiuser/.ssh/id_rsa
-    cp /ssh-shared/id_rsa.pub /home/mpiuser/.ssh/id_rsa.pub
-    cp /ssh-shared/authorized_keys /home/mpiuser/.ssh/authorized_keys
-    cp /ssh-shared/config /home/mpiuser/.ssh/config
-
-    # Set correct ownership and permissions
-    chown mpiuser:mpiuser /home/mpiuser/.ssh/*
-    chmod 700 /home/mpiuser/.ssh
-    chmod 600 /home/mpiuser/.ssh/id_rsa
-    chmod 644 /home/mpiuser/.ssh/id_rsa.pub
-    chmod 644 /home/mpiuser/.ssh/authorized_keys
-    chmod 644 /home/mpiuser/.ssh/config
+    
+    # Use install command which handles permissions better
+    install -m 600 -o mpiuser -g mpiuser /ssh-shared/id_rsa /home/mpiuser/.ssh/id_rsa
+    install -m 644 -o mpiuser -g mpiuser /ssh-shared/id_rsa.pub /home/mpiuser/.ssh/id_rsa.pub
+    install -m 644 -o mpiuser -g mpiuser /ssh-shared/authorized_keys /home/mpiuser/.ssh/authorized_keys
+    install -m 644 -o mpiuser -g mpiuser /ssh-shared/config /home/mpiuser/.ssh/config
 
     echo "SSH keys copied and configured successfully."
+    
+    # Verify that id_rsa was copied
+    if [ ! -f /home/mpiuser/.ssh/id_rsa ]; then
+        echo "ERROR: id_rsa was not copied successfully!"
+        ls -la /ssh-shared/
+        ls -la /home/mpiuser/.ssh/
+        exit 1
+    fi
+    echo "Verified: id_rsa exists with correct permissions"
 else
     echo "ERROR: SSH keys not found in shared volume!"
     exit 1
@@ -27,9 +30,17 @@ fi
 # Ensure the log file exists and has the correct permissions
 if [ ! -f /var/log/rabbitmq_consumer.log ]; then
     echo "Creating RabbitMQ consumer log file..."
-    sudo touch /var/log/rabbitmq_consumer.log
-    sudo chown mpiuser:mpiuser /var/log/rabbitmq_consumer.log
-    sudo chmod 644 /var/log/rabbitmq_consumer.log
+    touch /var/log/rabbitmq_consumer.log
+    chown mpiuser:mpiuser /var/log/rabbitmq_consumer.log
+    chmod 644 /var/log/rabbitmq_consumer.log
+fi
+
+# Ensure the MPI jobs log directory exists
+if [ ! -d /var/log/mpi_jobs ]; then
+    echo "Creating MPI jobs log directory..."
+    mkdir -p /var/log/mpi_jobs
+    chown mpiuser:mpiuser /var/log/mpi_jobs
+    chmod 755 /var/log/mpi_jobs
 fi
 
 # Esperar a que RabbitMQ esté disponible SOLO en el master
