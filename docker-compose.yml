@@ -3,7 +3,6 @@ x-common-service: &mpi-common
     context: mpi/
     dockerfile: Dockerfile
   volumes:
-    - ./project:/home/mpiuser/project
     - ssh-keys:/ssh-shared:rw
   networks:
     - my_net

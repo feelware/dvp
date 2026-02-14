@@ -24,6 +24,14 @@ else
     exit 1
 fi
 
+# Ensure the log file exists and has the correct permissions
+if [ ! -f /var/log/rabbitmq_consumer.log ]; then
+    echo "Creating RabbitMQ consumer log file..."
+    sudo touch /var/log/rabbitmq_consumer.log
+    sudo chown mpiuser:mpiuser /var/log/rabbitmq_consumer.log
+    sudo chmod 644 /var/log/rabbitmq_consumer.log
+fi
+
 # Esperar a que RabbitMQ esté disponible SOLO en el master
 HOSTNAME=$(hostname)
 if [ "$HOSTNAME" = "master" ] || [ "$HOSTNAME" = "mpi-master" ]; then
@@ -47,6 +55,3 @@ else
     echo "This is a worker node ($HOSTNAME), skipping RabbitMQ consumer..."
 fi
 
-# Start SSH daemon
-echo "Starting SSH daemon..."
-sudo /usr/sbin/sshd -D

@@ -71,25 +71,16 @@ void process_message(const char *message, size_t message_len) {
     }
     printf("\n");
 
-    // TODO: Aquí invocaremos mpirun para procesar el video
-    // Por ahora, solo mostramos el comando que se ejecutaría
-    printf("🚀 Comando MPI que se ejecutaría:\n");
-    printf("   mpirun -np 6 --hostfile /home/mpiuser/hostfile \\\n");
-    printf("          /home/mpiuser/project/process_video \\\n");
-    printf("          %s %s %s\n\n", 
-           job_id->valuestring, 
-           video_path->valuestring, 
-           task->valuestring);
-
     // Ejemplo de cómo ejecutar el comando (descomentarlo cuando esté listo):
-    /*
     char command[1024];
     snprintf(command, sizeof(command),
-             "mpirun -np 6 --hostfile /home/mpiuser/hostfile "
-             "/home/mpiuser/project/process_video '%s' '%s' '%s'",
-             job_id->valuestring,
-             video_path->valuestring,
-             task->valuestring);
+        "mpirun -np 6 -H master,worker1,worker2 /usr/local/bin/process_video %s %s %s \"%s\" > /var/log/mpi_jobs/%s.log 2>&1",
+        job_id->valuestring,
+        video_path->valuestring,
+        task->valuestring,
+        params ? cJSON_Print(params) : "{}",
+        job_id->valuestring
+    );
     
     printf("Ejecutando: %s\n", command);
     int result = system(command);
@@ -98,7 +89,6 @@ void process_message(const char *message, size_t message_len) {
     } else {
         fprintf(stderr, "❌ Error en procesamiento (código: %d)\n", result);
     }
-    */
 
     printf("✅ Mensaje procesado\n\n");
     fflush(stdout);
