@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y \
     libcjson-dev \
     pkg-config \
     netcat-openbsd \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir /var/run/sshd
@@ -45,11 +46,11 @@ RUN gcc -o /usr/local/bin/rabbitmq_consumer /tmp/rabbitmq_consumer.c -lrabbitmq 
 
 # Copiar y compilar process_video con mpicc
 COPY src/process_video.c /tmp/process_video.c
-RUN mpicc -o /usr/local/bin/process_video /tmp/process_video.c -lopencv_core -lopencv_imgcodecs -lopencv_imgproc -lopencv_videoio && \
+RUN mpicc -o /usr/local/bin/process_video /tmp/process_video.c \
+    -lcurl -lpthread -lopencv_core -lopencv_imgcodecs -lopencv_imgproc -lopencv_videoio && \
     chmod +x /usr/local/bin/process_video && \
     rm /tmp/process_video.c
 
-USER mpiuser
 WORKDIR /home/mpiuser
 
-CMD ["/bin/bash", "-c", "/usr/local/bin/init-ssh.sh && sudo /usr/sbin/sshd -D"]
+CMD ["/bin/bash", "-c", "/usr/local/bin/init-ssh.sh && /usr/sbin/sshd -D"]

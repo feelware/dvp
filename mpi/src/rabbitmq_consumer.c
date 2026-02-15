@@ -71,29 +71,43 @@ void process_message(const char *message, size_t message_len) {
     }
     printf("\n");
 
-    // Ejemplo de cómo ejecutar el comando (descomentarlo cuando esté listo):
-    char command[1024];
+    // Preparar params como string para el comando
+    char *params_str = NULL;
+    if (cJSON_IsObject(params)) {
+        params_str = cJSON_Print(params);
+    }
+    if (!params_str) {
+        params_str = strdup("{}");
+    }
+
+    // Ejecutar el comando MPI como el usuario mpiuser (usa /home/mpiuser/.ssh)
+    // Esto evita que mpirun intente SSH como root y falle por host-key/credenciales
+    char command[4096];
     snprintf(command, sizeof(command),
-        "mpirun -np 6 -H master,worker1,worker2 /usr/local/bin/process_video %s %s %s \"%s\" > /var/log/mpi_jobs/%s.log 2>&1",
+        "su - mpiuser -c 'mpirun --allow-run-as-root --mca btl_tcp_if_include eth0 --mca oob_tcp_if_include eth0 --mca routed direct "
+        "-np 6 -H master:2,worker1:2,worker2:2 /usr/local/bin/process_video %s %s %s \"%s\" > /var/log/mpi_jobs/%s.log 2>&1'",
         job_id->valuestring,
         video_path->valuestring,
         task->valuestring,
-        params ? cJSON_Print(params) : "{}",
+        params_str,
         job_id->valuestring
     );
     
     printf("Ejecutando: %s\n", command);
+    fflush(stdout);
+    
     int result = system(command);
     if (result == 0) {
-        printf("✅ Procesamiento completado exitosamente\n");
+        printf("Procesamiento completado exitosamente\n");
     } else {
-        fprintf(stderr, "❌ Error en procesamiento (código: %d)\n", result);
+        fprintf(stderr, "Error en procesamiento (codigo: %d)\n", result);
     }
 
-    printf("✅ Mensaje procesado\n\n");
+    printf("Mensaje procesado\n\n");
     fflush(stdout);
 
-    // Liberar memoria del JSON
+    // Liberar memoria
+    free(params_str);
     cJSON_Delete(json);
 }
 
