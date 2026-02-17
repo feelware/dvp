@@ -8,6 +8,7 @@ from io import BytesIO
 
 import asyncssh
 import boto3
+import pika
 from aio_pika import connect_robust, Message
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
