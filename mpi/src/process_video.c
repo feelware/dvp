@@ -6,6 +6,7 @@
 #include <curl/curl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include "video_decompose.h"
 
 #define MINIO_ENDPOINT "http://minio:9000"
 #define MINIO_BUCKET "uploads"
@@ -45,7 +46,7 @@ static size_t write_memory_callback(void *contents, size_t size, size_t nmemb, v
         if (new_capacity < mem->size + realsize) {
             new_capacity = mem->size + realsize;
         }
-        char *new_data = realloc(mem->data, new_capacity);
+        char *new_data = (char *)malloc(new_capacity);
         if (new_data == NULL) {
             fprintf(stderr, "Error: No se pudo realocar memoria\n");
             return 0;
@@ -94,7 +95,7 @@ void *download_chunk_thread(void *arg) {
     MemoryBuffer mem = {0};
 
     mem.capacity = chunk->end_byte - chunk->start_byte + 1;
-    mem.data = malloc(mem.capacity);
+    mem.data = (char *)malloc(mem.capacity);
     if (mem.data == NULL) {
         fprintf(stderr, "Thread %d: Error al asignar memoria\n", chunk->thread_id);
         chunk->success = 0;
@@ -144,7 +145,7 @@ void *download_chunk_thread(void *arg) {
 }
 
 char *generate_presigned_url(const char *bucket, const char *object_key) {
-    char *presigned_url = malloc(1024);
+    char *presigned_url = (char *)malloc(1024);
     if (!presigned_url) {
         fprintf(stderr, "Error al asignar memoria para URL\n");
         return NULL;
@@ -195,8 +196,8 @@ int download_video_parallel(const char *video_path, const char *output_file, int
     int num_threads = NUM_DOWNLOAD_THREADS;
     long chunk_size = file_size / num_threads;
 
-    DownloadChunk *chunks = malloc(num_threads * sizeof(DownloadChunk));
-    pthread_t *threads = malloc(num_threads * sizeof(pthread_t));
+    DownloadChunk *chunks = (DownloadChunk *)malloc(num_threads * sizeof(DownloadChunk));
+    pthread_t *threads = (pthread_t *)malloc(num_threads * sizeof(pthread_t));
 
     if (!chunks || !threads) {
         fprintf(stderr, "Error al asignar memoria para threads\n");
@@ -324,6 +325,7 @@ int main(int argc, char **argv) {
     const char *video_path = argv[2];
     const char *task = argv[3];
     const char *params = (argc > 4) ? argv[4] : "{}";
+    char output_file[512];
 
     if (rank == 0) {
         printf("========================================\n");
@@ -339,7 +341,6 @@ int main(int argc, char **argv) {
 
         curl_global_init(CURL_GLOBAL_DEFAULT);
 
-        char output_file[512];
         snprintf(output_file, sizeof(output_file), "/tmp/video_%s.mp4", job_id);
 
         printf("Descargando video desde MinIO...\n");
@@ -357,22 +358,32 @@ int main(int argc, char **argv) {
         printf("========================================\n\n");
         fflush(stdout);
 
-        printf("Procesamiento de video pendiente de implementacion\n");
-        printf("Task: %s\n", task);
-        printf("Archivo local: %s\n", output_file);
-        printf("\n");
-        fflush(stdout);
+    printf("Iniciando descomposición del video...\n");
+    fflush(stdout);
 
-        curl_global_cleanup();
-    }
+    curl_global_cleanup();
+}
 
-    MPI_Barrier(MPI_COMM_WORLD);
+MPI_Barrier(MPI_COMM_WORLD);
 
-    if (rank == 0) {
-        printf("Proceso completado exitosamente\n");
-        fflush(stdout);
-    }
+MPI_Bcast(output_file, 512, MPI_CHAR, 0, MPI_COMM_WORLD);
 
+if (!decompose_video(output_file, rank, num_procs)) {
+    fprintf(stderr, "[Rank %d] Error en la descomposición del video\n", rank);
     MPI_Finalize();
-    return 0;
+    return 1;
+}
+
+MPI_Barrier(MPI_COMM_WORLD);
+
+if (rank == 0) {
+    printf("\n========================================\n");
+    printf("Descomposición completada exitosamente\n");
+    printf("Task: %s\n", task);
+    printf("Archivo local: %s\n", output_file);
+    printf("========================================\n\n");
+    fflush(stdout);
+}
+
+MPI_Finalize();    return 0;
 }
