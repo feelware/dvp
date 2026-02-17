@@ -43,21 +43,21 @@ RUN gcc -o /usr/local/bin/rabbitmq_consumer /tmp/rabbitmq_consumer.c -lrabbitmq 
     chmod +x /usr/local/bin/rabbitmq_consumer && \
     rm /tmp/rabbitmq_consumer.c
 
-COPY src/main.cpp /tmp/main.cpp
+# COPY src/main.cpp /tmp/main.cpp
 COPY src/process_video.c /tmp/process_video.c
 COPY src/video_decompose.h /tmp/video_decompose.h
 COPY src/video_decompose.cpp /tmp/video_decompose.cpp
 
 RUN cd /tmp && mpic++ -c video_decompose.cpp -o video_decompose.o $(pkg-config --cflags --libs opencv4)
 
-RUN cd /tmp && mpic++ -Wall -std=c++11 -o main main.cpp $(pkg-config --cflags --libs opencv4) && \
-    mv main /usr/local/bin/main && chmod +x /usr/local/bin/main
+# RUN cd /tmp && mpic++ -Wall -std=c++11 -o main main.cpp $(pkg-config --cflags --libs opencv4) && \
+#     mv main /usr/local/bin/main && chmod +x /usr/local/bin/main
 
 RUN cd /tmp && mpic++ -o process_video process_video.c video_decompose.o \
     -lcurl -lpthread $(pkg-config --cflags --libs opencv4) && \
     mv process_video /usr/local/bin/process_video && chmod +x /usr/local/bin/process_video
 
-RUN rm -f /tmp/main.cpp /tmp/process_video.c /tmp/video_decompose.h /tmp/video_decompose.cpp /tmp/video_decompose.o
+RUN rm -f /tmp/process_video.c /tmp/video_decompose.h /tmp/video_decompose.cpp /tmp/video_decompose.o
 
 WORKDIR /home/mpiuser
 
