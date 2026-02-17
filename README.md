@@ -620,10 +620,11 @@ dvp/
 │   ├── entrypoint.sh
 │   └── pyproject.toml
 ├── mpi/                         # MPI Cluster
+│   ├── src/                     # Source code
+│   │   ├── process_video.c      # Código de procesamiento de video en C
+│   │   └── rabbitmq_consumer.c  # Consumer de RabbitMQ en C
 │   ├── Dockerfile
-│   ├── init-ssh.sh
-│   └── rabbitmq_consumer.c      # Consumer de RabbitMQ en C
-├── project/                     # Shared workspace para MPI jobs
+│   └── init-ssh.sh
 ├── docker-compose.yml           # Orquestación de servicios
 ├── validate-setup.sh            # Script de validación
 └── MENSAJE_RABBITMQ_CONTRACT.md # Contrato de mensajes API ↔ Master

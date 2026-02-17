@@ -71,39 +71,43 @@ void process_message(const char *message, size_t message_len) {
     }
     printf("\n");
 
-    // TODO: Aquí invocaremos mpirun para procesar el video
-    // Por ahora, solo mostramos el comando que se ejecutaría
-    printf("🚀 Comando MPI que se ejecutaría:\n");
-    printf("   mpirun -np 6 --hostfile /home/mpiuser/hostfile \\\n");
-    printf("          /home/mpiuser/project/process_video \\\n");
-    printf("          %s %s %s\n\n", 
-           job_id->valuestring, 
-           video_path->valuestring, 
-           task->valuestring);
+    // Preparar params como string para el comando
+    char *params_str = NULL;
+    if (cJSON_IsObject(params)) {
+        params_str = cJSON_Print(params);
+    }
+    if (!params_str) {
+        params_str = strdup("{}");
+    }
 
-    // Ejemplo de cómo ejecutar el comando (descomentarlo cuando esté listo):
-    /*
-    char command[1024];
+    // Ejecutar el comando MPI como el usuario mpiuser (usa /home/mpiuser/.ssh)
+    // Esto evita que mpirun intente SSH como root y falle por host-key/credenciales
+    char command[4096];
     snprintf(command, sizeof(command),
-             "mpirun -np 6 --hostfile /home/mpiuser/hostfile "
-             "/home/mpiuser/project/process_video '%s' '%s' '%s'",
-             job_id->valuestring,
-             video_path->valuestring,
-             task->valuestring);
+        "su - mpiuser -c 'mpirun --allow-run-as-root --mca btl_tcp_if_include eth0 --mca oob_tcp_if_include eth0 --mca routed direct "
+        "-np 6 -H master:2,worker1:2,worker2:2 /usr/local/bin/process_video %s %s %s \"%s\" > /var/log/mpi_jobs/%s.log 2>&1'",
+        job_id->valuestring,
+        video_path->valuestring,
+        task->valuestring,
+        params_str,
+        job_id->valuestring
+    );
     
     printf("Ejecutando: %s\n", command);
+    fflush(stdout);
+    
     int result = system(command);
     if (result == 0) {
-        printf("✅ Procesamiento completado exitosamente\n");
+        printf("Procesamiento completado exitosamente\n");
     } else {
-        fprintf(stderr, "❌ Error en procesamiento (código: %d)\n", result);
+        fprintf(stderr, "Error en procesamiento (codigo: %d)\n", result);
     }
-    */
 
-    printf("✅ Mensaje procesado\n\n");
+    printf("Mensaje procesado\n\n");
     fflush(stdout);
 
-    // Liberar memoria del JSON
+    // Liberar memoria
+    free(params_str);
     cJSON_Delete(json);
 }
 

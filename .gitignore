@@ -1,18 +1,5 @@
-# Binarios y ejecutables
-project/main
-*.o
+*.mp4
 
-# Archivos de video (Entradas y salidas pesadas)
-project/video_input.mp4
-project/part_*.mp4
-output-videos/
-input-videos/
-
-# Archivos temporales de sistema y editores
-.vscode/
-__pycache__/
+.vscode
 *.swp
 .DS_Store
-
-# Archivos de configuración de SSH generados localmente
-ssh-keys/
