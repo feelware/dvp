@@ -4,6 +4,7 @@ x-common-service: &mpi-common
     dockerfile: Dockerfile
   volumes:
     - ssh-keys:/ssh-shared:rw
+    - video-cache:/video-cache:rw
   networks:
     - my_net
 
@@ -142,6 +143,7 @@ services:
 
 volumes:
   ssh-keys:
+  video-cache:
 
 networks:
   my_net:
