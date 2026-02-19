@@ -56,12 +56,18 @@ if [ "$HOSTNAME" = "master" ] || [ "$HOSTNAME" = "mpi-master" ]; then
         sleep 2
     done
 
-    # Iniciar el consumer de RabbitMQ en background (SOLO EN MASTER)
-    echo "Starting RabbitMQ consumer in background..."
-    /usr/local/bin/rabbitmq_consumer > /var/log/rabbitmq_consumer.log 2>&1 &
-    CONSUMER_PID=$!
-    echo "RabbitMQ consumer started with PID: $CONSUMER_PID"
-    echo "Logs: tail -f /var/log/rabbitmq_consumer.log"
+    # Iniciar el consumer de RabbitMQ en FOREGROUND (SOLO EN MASTER)
+    # Primero necesitamos iniciar sshd para que mpirun funcione localmente
+    echo "Starting sshd locally for MPI..."
+    /usr/sbin/sshd
+    
+    echo "Starting RabbitMQ consumer in foreground..."
+    # Ejecutamos el consumer y enviamos logs a archivo y stdout
+    /usr/local/bin/rabbitmq_consumer 2>&1 | tee /var/log/rabbitmq_consumer.log
+    
+    # Si el consumer termina (crash o exit), el script termina.
+    # El CMD del Dockerfile intentará ejecutar sshd -D, que fallará porque el puerto 22 ya está en uso.
+    # Esto causará que el contenedor se detenga, lo cual es correcto si el proceso principal muere.
 else
     echo "This is a worker node ($HOSTNAME), skipping RabbitMQ consumer..."
 fi

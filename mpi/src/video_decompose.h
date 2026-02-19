@@ -5,7 +5,8 @@
 extern "C" {
 #endif
 
-int decompose_video(const char *video_file, int rank, int num_procs);
+int decompose_video(const char *video_file, int rank, int num_procs,
+                    const char *task, const char *params);
 
 #ifdef __cplusplus
 }

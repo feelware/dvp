@@ -6,6 +6,14 @@ x-common-service: &mpi-common
     - ssh-keys:/ssh-shared:rw
   networks:
     - my_net
+  # Uncomment the following section to enable GPU support on NVIDIA-equipped machines
+  # deploy:
+  #   resources:
+  #     reservations:
+  #       devices:
+  #         - driver: nvidia
+  #           count: all
+  #           capabilities: [gpu]
 
 services:
   # Servicio de inicialización que genera las claves SSH
@@ -15,8 +23,7 @@ services:
     volumes:
       - ssh-keys:/ssh-shared:rw
     command: >
-      sh -c "
-      if [ ! -f /ssh-shared/id_rsa ]; then
+      sh -c " if [ ! -f /ssh-shared/id_rsa ]; then
         apk add --no-cache openssh-keygen &&
         ssh-keygen -t rsa -f /ssh-shared/id_rsa -q -N '' &&
         cp /ssh-shared/id_rsa.pub /ssh-shared/authorized_keys &&
@@ -30,8 +37,7 @@ services:
         echo 'SSH keys generated successfully';
       else
         echo 'SSH keys already exist';
-      fi
-      "
+      fi "
 
   mpi-master:
     <<: *mpi-common
@@ -81,8 +87,9 @@ services:
       - "5432:5432"
     networks:
       - my_net
-    healthcheck:                              # ← AGREGAR BLOQUE COMPLETO
-      test: ["CMD-SHELL", "pg_isready -U dbuser"]
+    healthcheck:
+      # ← AGREGAR BLOQUE COMPLETO
+      test: [ "CMD-SHELL", "pg_isready -U dbuser" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -142,6 +149,7 @@ services:
 
 volumes:
   ssh-keys:
+
 
 networks:
   my_net:
