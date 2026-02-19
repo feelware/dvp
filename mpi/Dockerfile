@@ -43,17 +43,24 @@ RUN gcc -o /usr/local/bin/rabbitmq_consumer /tmp/rabbitmq_consumer.c -lrabbitmq 
     chmod +x /usr/local/bin/rabbitmq_consumer && \
     rm /tmp/rabbitmq_consumer.c
 
+COPY luts/ /home/mpiuser/luts/
+
 COPY src/process_video.c /tmp/process_video.c
-COPY src/video_decompose.h /tmp/video_decompose.h
-COPY src/video_decompose.cpp /tmp/video_decompose.cpp
+COPY src/download_video.c /tmp/download_video.c
+COPY src/download_video.h /tmp/download_video.h
+COPY src/apply_lut.h /tmp/apply_lut.h
+COPY src/apply_lut.cpp /tmp/apply_lut.cpp
 
-RUN cd /tmp && mpic++ -c video_decompose.cpp -o video_decompose.o $(pkg-config --cflags --libs opencv4)
+WORKDIR /tmp
 
-RUN cd /tmp && mpic++ -o process_video process_video.c video_decompose.o \
-    -lcurl -lpthread $(pkg-config --cflags --libs opencv4) && \
+RUN mpic++ -c download_video.c -o download_video.o -lcurl -lpthread
+RUN mpic++ -c apply_lut.cpp -o apply_lut.o $(pkg-config --cflags opencv4)
+
+RUN mpic++ -o process_video process_video.c apply_lut.o download_video.o \
+    -lcurl -lpthread $(pkg-config --libs opencv4) && \
     mv process_video /usr/local/bin/process_video && chmod +x /usr/local/bin/process_video
 
-RUN rm -f /tmp/process_video.c /tmp/video_decompose.h /tmp/video_decompose.cpp /tmp/video_decompose.o
+RUN rm -f /tmp/process_video.c /tmp/apply_lut.h /tmp/apply_lut.cpp /tmp/apply_lut.o /tmp/download_video.c /tmp/download_video.h /tmp/download_video.o
 
 WORKDIR /home/mpiuser
 
